@@ -1,3 +1,5 @@
+> https://2x.nz/posts/oci/#%E8%87%AA%E5%8A%A8%E8%84%9A%E6%9C%AC%E6%8A%A2arm%E6%9C%BA
+
 # OCI ARM Instance Auto-Creation Worker
 
 Cloudflare Worker 版本的 OCI ARM 实例自动创建工具。每分钟通过 Cron 触发一次，自动尝试创建 Oracle Cloud 免费层 ARM 实例。
