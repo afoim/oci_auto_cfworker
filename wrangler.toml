@@ -1,0 +1,42 @@
+name = "oci-auto-worker"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+# Cron trigger - runs every 1 minute
+[triggers]
+crons = ["* * * * *"]
+
+[observability]
+enabled = false
+head_sampling_rate = 1
+
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+persist = true
+invocation_logs = true
+
+[observability.traces]
+enabled = false
+persist = true
+head_sampling_rate = 1
+
+# Environment variables (non-sensitive defaults)
+# Sensitive values should be set via: wrangler secret put <KEY_NAME>
+[vars]
+OCI_REGION = "ap-osaka-1"
+OCPUS = "4"
+INSTANCE_DISPLAY_NAME = "ubuntu-osaka-oci-worker"
+
+# Set these secrets using wrangler CLI:
+# wrangler secret put OCI_USER
+# wrangler secret put OCI_FINGERPRINT
+# wrangler secret put OCI_TENANCY
+# wrangler secret put OCI_PRIVATE_KEY
+# wrangler secret put COMPARTMENT_ID
+# wrangler secret put AVAILABILITY_DOMAIN
+# wrangler secret put IMAGE_ID
+# wrangler secret put SUBNET_ID
+# wrangler secret put SSH_PUBLIC_KEY
+# wrangler secret put TELEGRAM_BOT_API
+# wrangler secret put TELEGRAM_CHAT_ID

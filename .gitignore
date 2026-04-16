@@ -1,0 +1,59 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+*.js
+*.js.map
+
+# Wrangler
+.wrangler/
+.dev.vars
+wrangler.toml.backup
+
+# Logs
+*.log
+logs/
+logs-*.json
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Sensitive files - DO NOT COMMIT THESE
+config
+oci_private_key.pem
+oci_private_key_pkcs8.pem
+*.pem
+*.key
+
+# Python files (original project - keep for reference but don't commit)
+oci_auto.py
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+
+# OCI SDK source (if downloaded for reference)
+oci-python-sdk-master/
+
+# Temporary files
+*.tmp
+*.temp
+.cache/

@@ -1,0 +1,25 @@
+# Example environment variables for local development
+# Copy this file to .dev.vars and fill in your actual values
+# DO NOT commit .dev.vars to git!
+
+# OCI Authentication
+OCI_USER=ocid1.user.oc1..xxxxxx
+OCI_FINGERPRINT=xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx
+OCI_TENANCY=ocid1.tenancy.oc1..xxxxxx
+OCI_REGION=ap-singapore-1
+OCI_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----
+MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC...
+-----END PRIVATE KEY-----"
+
+# Instance Configuration
+OCPUS=4
+INSTANCE_DISPLAY_NAME=ubuntu-sg-oci-worker
+COMPARTMENT_ID=ocid1.tenancy.oc1..xxxxxx
+AVAILABILITY_DOMAIN=rhNU:AP-SINGAPORE-1-AD-1
+IMAGE_ID=ocid1.image.oc1.ap-singapore-1.xxxxxx
+SUBNET_ID=ocid1.subnet.oc1.ap-singapore-1.xxxxxx
+SSH_PUBLIC_KEY=ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC...
+
+# Telegram Notification (Optional)
+TELEGRAM_BOT_API=123456789:ABCdefGHIjklMNOpqrsTUVwxyz
+TELEGRAM_CHAT_ID=123456789
