@@ -30,22 +30,14 @@ interface Env {
 
 export default {
   async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
-    console.log('Cron trigger fired at:', new Date(event.scheduledTime).toISOString());
-    
     try {
       await createOCIInstance(env);
     } catch (error) {
-      console.error('Error in scheduled task:', error);
-      // 不再发送 Telegram 通知，只记录日志
+      console.error('Error:', error instanceof Error ? error.message : String(error));
     }
   },
 
   async fetch(request: Request, env: Env): Promise<Response> {
-    console.log('='.repeat(80));
-    console.log('Manual trigger received');
-    console.log('='.repeat(80));
-    
-    // Manual trigger endpoint for testing
     if (request.method === 'GET') {
       try {
         const result = await createOCIInstance(env);
@@ -53,11 +45,9 @@ export default {
           headers: { 'Content-Type': 'application/json' }
         });
       } catch (error) {
-        console.error('Fatal error:', error);
         return new Response(JSON.stringify({ 
           success: false,
-          error: error instanceof Error ? error.message : String(error),
-          stack: error instanceof Error ? error.stack : undefined
+          error: error instanceof Error ? error.message : String(error)
         }, null, 2), {
           status: 500,
           headers: { 'Content-Type': 'application/json' }
@@ -65,144 +55,74 @@ export default {
       }
     }
     
-    return new Response('OCI Auto-Creation Worker is running. Use GET request to execute.', {
-      status: 200
-    });
+    return new Response('OCI Auto-Creation Worker is running.', { status: 200 });
   }
 };
 
 async function createOCIInstance(env: Env): Promise<any> {
-  console.log('\n' + '='.repeat(80));
-  console.log('STARTING OCI INSTANCE CREATION');
-  console.log('='.repeat(80));
-  
-  // Validate environment variables
-  console.log('\n[1/6] Validating environment variables...');
-  const required = ['OCI_USER', 'OCI_FINGERPRINT', 'OCI_TENANCY', 'OCI_REGION', 'OCI_PRIVATE_KEY', 
-                    'COMPARTMENT_ID', 'AVAILABILITY_DOMAIN', 'IMAGE_ID', 'SUBNET_ID', 'SSH_PUBLIC_KEY'];
-  const missing = required.filter(key => !env[key as keyof Env]);
-  
-  if (missing.length > 0) {
-    const msg = `❌ Missing environment variables: ${missing.join(', ')}`;
-    console.error(msg);
-    // 配置错误不发送通知
-    throw new Error(msg);
-  }
-  console.log('✅ All required environment variables present');
-  
-  // Log configuration (without sensitive data)
-  console.log('\n[2/6] Configuration:');
-  console.log(`  Region: ${env.OCI_REGION}`);
-  console.log(`  User: ${env.OCI_USER?.substring(0, 30)}...`);
-  console.log(`  Tenancy: ${env.OCI_TENANCY?.substring(0, 30)}...`);
-  console.log(`  Fingerprint: ${env.OCI_FINGERPRINT}`);
-  console.log(`  Compartment: ${env.COMPARTMENT_ID?.substring(0, 30)}...`);
-  console.log(`  Private Key Length: ${env.OCI_PRIVATE_KEY?.length} chars`);
-  console.log(`  Private Key Format: ${env.OCI_PRIVATE_KEY?.includes('BEGIN PRIVATE KEY') ? 'PKCS#8' : env.OCI_PRIVATE_KEY?.includes('BEGIN RSA') ? 'RSA (WRONG!)' : 'Unknown'}`);
-  
   const ocpus = parseInt(env.OCPUS || '4');
   const memoryInGbs = ocpus * 6;
   
-  console.log(`\n[3/6] Target instance: ${ocpus} OCPUs, ${memoryInGbs} GB RAM`);
-  // 不再发送 Telegram 通知，只记录日志
-  
-  // Step 1: Check existing instances
-  console.log('\n[4/6] Checking existing instances...');
+  // Check existing instances
   const existingInstances = await listInstances(env);
   
   let totalOcpus = 0;
   let totalMemory = 0;
-  let a1FlexCount = 0;
   const instanceNames: string[] = [];
   
-  console.log(`Found ${existingInstances.length} total instance(s)`);
   for (const instance of existingInstances) {
-    console.log(`  - ${instance.displayName} | ${instance.shape} | ${instance.shapeConfig?.ocpus} OCPUs | ${instance.shapeConfig?.memoryInGBs} GB | ${instance.lifecycleState}`);
     instanceNames.push(instance.displayName);
     
     if (instance.shape === 'VM.Standard.A1.Flex' && 
         !['TERMINATING', 'TERMINATED'].includes(instance.lifecycleState)) {
-      a1FlexCount++;
       totalOcpus += instance.shapeConfig?.ocpus || 0;
       totalMemory += instance.shapeConfig?.memoryInGBs || 0;
     }
   }
   
-  console.log(`\nA1.Flex Summary: ${a1FlexCount} active instance(s)`);
-  console.log(`  Total: ${totalOcpus}/${4} OCPUs, ${totalMemory}/${24} GB`);
-  console.log(`  Free: ${4 - totalOcpus} OCPUs, ${24 - totalMemory} GB`);
-  
-  // Step 2: Pre-check resource limits
-  console.log('\n[5/6] Pre-flight checks...');
+  // Pre-check resource limits
   if (totalOcpus + ocpus > 4 || totalMemory + memoryInGbs > 24) {
-    const msg = `❌ Resource limit exceeded! Current: ${totalOcpus}/${4} OCPUs, ${totalMemory}/${24} GB. Cannot add ${ocpus} OCPUs.`;
-    console.error(msg);
-    // 只记录日志，不发送 Telegram
-    throw new Error(msg);
+    throw new Error(`Resource limit exceeded: ${totalOcpus}/${4} OCPUs, ${totalMemory}/${24} GB`);
   }
-  console.log('✅ Resource limits OK');
   
-  // Step 3: Check for duplicate display name
+  // Check for duplicate display name
   if (instanceNames.includes(env.INSTANCE_DISPLAY_NAME)) {
-    const msg = `❌ Duplicate display name: ${env.INSTANCE_DISPLAY_NAME}`;
-    console.error(msg);
-    // 只记录日志，不发送 Telegram
-    throw new Error(msg);
+    throw new Error(`Duplicate instance name: ${env.INSTANCE_DISPLAY_NAME}`);
   }
-  console.log('✅ Display name unique');
   
-  // Step 4: Launch instance
-  console.log('\n[6/6] Launching instance...');
+  // Launch instance
   try {
     const result = await launchInstance(env, ocpus, memoryInGbs);
     const msg = `✅ 成功创建实例！\n名称: ${env.INSTANCE_DISPLAY_NAME}\n配置: ${ocpus} OCPUs / ${memoryInGbs} GB RAM\n请编辑 VNIC 以获取公网 IP。`;
-    console.log('\n' + '='.repeat(80));
-    console.log('SUCCESS! Instance created:', env.INSTANCE_DISPLAY_NAME);
-    console.log('='.repeat(80));
-    // 只在成功时发送 Telegram 通知
+    console.log(msg);
     await sendTelegramMessage(env, msg);
     return { success: true, data: result };
   } catch (error: any) {
     if (error.status === 500 || error.code === 'InternalError') {
-      console.log('⏳ Out of host capacity, will retry later');
-      // 容量不足时不发送通知
-      return { success: false, reason: 'OutOfCapacity', willRetry: true };
-    } else {
-      const msg = `⚠️ Launch failed: ${error.message || String(error)}`;
-      console.error('\n' + '='.repeat(80));
-      console.error(msg);
-      console.error('='.repeat(80));
-      // 其他错误也不发送通知，只记录日志
-      throw error;
+      // Out of capacity - silent retry
+      console.log('Out of host capacity, will retry on next cron trigger');
+      return { success: false, reason: 'OutOfCapacity' };
     }
+    throw error;
   }
 }
 
 async function listInstances(env: Env): Promise<any[]> {
-  console.log('\n--- List Instances API Call ---');
   const endpoint = `https://iaas.${env.OCI_REGION}.oraclecloud.com/20160918/instances/`;
   const url = `${endpoint}?compartmentId=${encodeURIComponent(env.COMPARTMENT_ID)}`;
-  console.log(`URL: ${url}`);
   
   const response = await makeOCIRequest(env, 'GET', url);
   
-  console.log(`Response Status: ${response.status}`);
-  
   if (!response.ok) {
     const errorText = await response.text();
-    console.error(`Error Response: ${errorText}`);
     throw new Error(`Failed to list instances: ${response.status} ${errorText}`);
   }
   
-  const data = await response.json();
-  console.log(`Successfully retrieved ${data.length} instance(s)`);
-  return data;
+  return await response.json();
 }
 
 async function launchInstance(env: Env, ocpus: number, memoryInGbs: number): Promise<any> {
-  console.log('\n--- Launch Instance API Call ---');
   const endpoint = `https://iaas.${env.OCI_REGION}.oraclecloud.com/20160918/instances/`;
-  console.log(`URL: ${endpoint}`);
   
   const instanceDetails = {
     availabilityDomain: env.AVAILABILITY_DOMAIN,
@@ -244,15 +164,10 @@ async function launchInstance(env: Env, ocpus: number, memoryInGbs: number): Pro
     }
   };
   
-  console.log('Instance Details:', JSON.stringify(instanceDetails, null, 2));
-  
   const response = await makeOCIRequest(env, 'POST', endpoint, instanceDetails);
-  
-  console.log(`Response Status: ${response.status}`);
   
   if (!response.ok) {
     const errorText = await response.text();
-    console.error(`Error Response: ${errorText}`);
     let errorData;
     try {
       errorData = JSON.parse(errorText);
@@ -266,9 +181,7 @@ async function launchInstance(env: Env, ocpus: number, memoryInGbs: number): Pro
     throw error;
   }
   
-  const result = await response.json();
-  console.log('Instance created successfully!');
-  return result;
+  return await response.json();
 }
 
 async function makeOCIRequest(
@@ -277,18 +190,10 @@ async function makeOCIRequest(
   url: string, 
   body?: any
 ): Promise<Response> {
-  console.log(`\n>>> Making ${method} request to OCI API`);
-  
   const urlObj = new URL(url);
   const host = urlObj.host;
   const target = urlObj.pathname + urlObj.search;
-  
-  console.log(`Host: ${host}`);
-  console.log(`Target: ${target}`);
-  
-  // Use RFC 1123 date format (required by OCI)
   const date = new Date().toUTCString();
-  console.log(`Date: ${date}`);
   
   // Prepare body
   const bodyString = body ? JSON.stringify(body) : '';
@@ -318,29 +223,13 @@ async function makeOCIRequest(
   
   const signingString = signingComponents.join('\n');
   
-  console.log('\n--- Signing String ---');
-  console.log('Components count:', signingComponents.length);
-  console.log('Signing string length:', signingString.length);
-  console.log('Signing string (escaped):', JSON.stringify(signingString));
-  console.log('Signing string (raw):');
-  console.log(signingString);
-  console.log('--- End Signing String ---\n');
-  
   // Sign the request
-  console.log('Signing request...');
   const signature = await signRequest(env.OCI_PRIVATE_KEY, signingString);
-  console.log(`Signature: ${signature.substring(0, 50)}...`);
   
   // Build authorization header
   const keyId = `${env.OCI_TENANCY}/${env.OCI_USER}/${env.OCI_FINGERPRINT}`;
   const headersParam = headersToSign.join(' ');
   const authHeader = `Signature version="1",keyId="${keyId}",algorithm="rsa-sha256",headers="${headersParam}",signature="${signature}"`;
-  
-  console.log('\n--- Authorization Header ---');
-  console.log(`KeyId: ${keyId}`);
-  console.log(`Headers: ${headersParam}`);
-  console.log(`Full Auth: ${authHeader.substring(0, 200)}...`);
-  console.log('--- End Authorization Header ---\n');
   
   const headers: Record<string, string> = {
     'date': date,
@@ -358,16 +247,11 @@ async function makeOCIRequest(
     headers['x-content-sha256'] = bodyHashBase64;
   }
   
-  console.log('Sending request...');
-  const response = await fetch(url, {
+  return fetch(url, {
     method,
     headers,
     body: bodyString || undefined
   });
-  
-  console.log(`<<< Response received: ${response.status} ${response.statusText}\n`);
-  
-  return response;
 }
 
 async function signRequest(privateKeyPem: string, signingString: string): Promise<string> {
@@ -477,7 +361,6 @@ async function signRequest(privateKeyPem: string, signingString: string): Promis
 
 async function sendTelegramMessage(env: Env, message: string): Promise<void> {
   if (!env.TELEGRAM_BOT_API || !env.TELEGRAM_CHAT_ID) {
-    console.log('Telegram not configured, skipping notification');
     return;
   }
   
